@@ -1,0 +1,94 @@
+services:
+  - type: web
+    name: ahc-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: starter
+    envVars:
+      - key: ENV
+        value: production
+      - key: MONGO_URI
+        sync: false  # set to your Atlas connection string in the Render dashboard
+      - key: MONGO_DB_NAME
+        value: american_hair_club
+      - key: JWT_SECRET
+        generateValue: true
+      - key: FERNET_KEY
+        sync: false  # generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: ahc-redis
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: redis
+          name: ahc-redis
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          type: redis
+          name: ahc-redis
+          property: connectionString
+      - key: CORS_ORIGINS
+        value: https://ahc-frontend.onrender.com
+      - key: FY_START_MONTH
+        value: "4"
+
+  - type: worker
+    name: ahc-celery-worker
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    dockerCommand: celery -A app.jobs.celery_app worker --beat --loglevel=info
+    plan: starter
+    envVars:
+      - key: MONGO_URI
+        sync: false
+      - key: MONGO_DB_NAME
+        value: american_hair_club
+      - key: JWT_SECRET
+        sync: false  # reuse the same value generated for ahc-backend
+      - key: FERNET_KEY
+        sync: false  # reuse the same value generated for ahc-backend
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: ahc-redis
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: redis
+          name: ahc-redis
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          type: redis
+          name: ahc-redis
+          property: connectionString
+
+  - type: web
+    name: ahc-frontend
+    runtime: static
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./frontend/dist
+    rootDir: frontend
+    routes:
+      - type: rewrite
+        source: /api/*
+        destination: https://ahc-backend.onrender.com/api/:splat
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
+  - type: redis
+    name: ahc-redis
+    plan: starter
+    ipAllowList: []
